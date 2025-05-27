@@ -1,0 +1,7 @@
+# List of user IDs who are allowed to be monitors.
+# To add a monitor, add their user ID to the list below, for example:
+# monitors:
+#   - 2
+#   - 1234
+
+monitors: [] 

@@ -12,7 +12,7 @@
 #### 依赖
 首先，如果尚未安装 Rust，请安装。 您可以按照 https://www.rust-lang.org/tools/install 中的说明进行操作
 
-对于 Ubuntu 或 Debian 用户，如果尚未安装“curl”，请使用以下命令进行安装：
+对于 Ubuntu 或 Debian 用户，如果尚未安装"curl"，请使用以下命令进行安装：
 
 ```shell
 sudo apt install curl
@@ -88,3 +88,10 @@ netstat -tuln | grep 12345
 
 ## 对于 Windows 或 Android 用户
 查看: [https://docs.qq.com/doc/DU1dlekx3U096REdD](https://docs.qq.com/doc/DU1dlekx3U096REdD)
+
+## Patch by Miyuki
+
+- 恢复了从 `server_config.yml` 加载 `ServerConfig` 的正确逻辑，若文件缺失或无效会使用默认配置。
+- 移除了服务端代码中重复和冲突的结构体及实现。
+- 监视用户ID现可通过 `server_config.yml` 配置。
+- 确保代码可正常构建并保持最新。

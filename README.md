@@ -92,3 +92,10 @@ netstat -tuln | grep 12345
 ## For Windows or Android
 View: [https://docs.qq.com/doc/DU1dlekx3U096REdD](https://docs.qq.com/doc/DU1dlekx3U096REdD)
 
+## Patch by Miyuki
+
+- Restored correct logic for loading `ServerConfig` from `server_config.yml` with robust fallback to defaults if the file is missing or invalid.
+- Removed duplicate and conflicting struct and implementation blocks in the server code.
+- Made monitor user IDs configurable via `server_config.yml`.
+- You can build on latest commit now <3
+
