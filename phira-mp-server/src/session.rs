@@ -12,7 +12,7 @@ use std::{
     collections::{hash_map::Entry, HashSet},
     ops::DerefMut,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Weak,
     },
     time::{Duration, Instant},
@@ -41,6 +41,7 @@ pub struct User {
     pub game_time: AtomicU32,
 
     pub dangle_mark: Mutex<Option<Arc<()>>>,
+    pub disconnected_at: AtomicU64,
 }
 
 impl User {
@@ -58,6 +59,7 @@ impl User {
             game_time: AtomicU32::default(),
 
             dangle_mark: Mutex::default(),
+            disconnected_at: AtomicU64::new(0),
         }
     }
 
@@ -76,6 +78,7 @@ impl User {
     pub async fn set_session(&self, session: Weak<Session>) {
         *self.session.write().await = Some(session);
         *self.dangle_mark.lock().await = None;
+        self.disconnected_at.store(0, Ordering::SeqCst);
     }
 
     pub async fn try_send(&self, cmd: ServerCommand) {
@@ -105,18 +108,24 @@ impl User {
         }
         let dangle_mark = Arc::new(());
         *self.dangle_mark.lock().await = Some(Arc::clone(&dangle_mark));
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        self.disconnected_at.store(now, Ordering::SeqCst);
+        let grace_period = 30; // seconds
+        let user = Arc::clone(&self);
         tokio::spawn(async move {
-            time::sleep(Duration::from_secs(10)).await;
-            if Arc::strong_count(&dangle_mark) > 1 {
-                let guard = self.room.read().await;
+            time::sleep(Duration::from_secs(grace_period)).await;
+            if user.disconnected_at.load(Ordering::SeqCst) == now {
+                let guard = user.room.read().await;
                 let room = guard.as_ref().map(Arc::clone);
                 drop(guard);
                 if let Some(room) = room {
-                    self.server.users.write().await.remove(&self.id);
-                    if room.on_user_leave(&self).await {
-                        self.server.rooms.write().await.remove(&room.id);
+                    user.server.users.write().await.remove(&user.id);
+                    if room.on_user_leave(&user).await {
+                        user.server.rooms.write().await.remove(&room.id);
                     }
                 }
+            } else {
+                info!(user = user.id, "user reconnected within grace period");
             }
         });
     }

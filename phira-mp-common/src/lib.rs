@@ -93,7 +93,15 @@ where
                     }
                     .await
                     {
-                        error!("failed to send: {err:?}");
+                        if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+                            if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                                warn!("os error 32 (broken pipe) during send task");
+                            } else {
+                                error!("send task io error: {io_err:?}");
+                            }
+                        } else {
+                            error!("failed to send: {err:?}");
+                        }
                     }
                 }
             }
@@ -108,7 +116,17 @@ where
                     let mut len = 0u32;
                     let mut pos = 0;
                     loop {
-                        let byte = read.read_u8().await?;
+                        let byte = match read.read_u8().await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                                    warn!("os error 32 (broken pipe) during recv task");
+                                } else {
+                                    error!("recv task io error: {e:?}");
+                                }
+                                break;
+                            }
+                        };
                         len |= ((byte & 0x7f) as u32) << pos;
                         pos += 7;
                         if byte & 0x80 == 0 {
@@ -124,7 +142,14 @@ where
                     let len = len as usize;
 
                     buffer.resize(len, 0);
-                    read.read_exact(&mut buffer).await?;
+                    if let Err(e) = read.read_exact(&mut buffer).await {
+                        if e.kind() == std::io::ErrorKind::BrokenPipe {
+                            warn!("os error 32 (broken pipe) during recv task");
+                        } else {
+                            error!("recv task io error: {e:?}");
+                        }
+                        break;
+                    }
                     trace!("received {} bytes: {buffer:?}", buffer.len());
 
                     let payload: R = match decode_packet(&buffer) {

@@ -73,6 +73,7 @@ impl From<TcpListener> for Server {
                 while let Some(id) = lost_con_rx.recv().await {
                     warn!("lost connection with {id}");
                     if let Some(session) = state.sessions.write().await.remove(&id) {
+                        info!("removing session for user {} after lost connection", session.user.id);
                         if session
                             .user
                             .session
@@ -98,14 +99,11 @@ impl From<TcpListener> for Server {
 impl Server {
     pub async fn accept(&self) -> Result<()> {
         let (stream, addr) = self.listener.accept().await?;
+        info!("accepted connection from {addr}");
         let mut guard = self.state.sessions.write().await;
         let entry = vacant_entry(&mut guard);
         let session = Session::new(*entry.key(), stream, Arc::clone(&self.state)).await?;
-        info!(
-            "received connections from {addr} ({}), version: {}",
-            session.id,
-            session.version()
-        );
+        info!("received connections from {addr} ({}), version: {}", session.id, session.version());
         entry.insert(session);
         Ok(())
     }
