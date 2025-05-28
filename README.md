@@ -1,6 +1,7 @@
 # phira-mp
 
 `phira-mp` is a project developed with Rust. Below are the steps to deploy and run this project.
+You can download the prebuilt version via Actions - <Your OS> - Artifacts
 
 [简体中文](README.zh-CN.md) | English Version
 
