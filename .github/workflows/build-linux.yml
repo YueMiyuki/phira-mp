@@ -24,8 +24,5 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build with cross
-        run: cross build --release --target ${{ matrix.target }} 
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} 
