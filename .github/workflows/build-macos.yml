@@ -25,4 +25,10 @@ jobs:
           override: true
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} 
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-release
+          path: target/${{ matrix.target }}/release/ 
