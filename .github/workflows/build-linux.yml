@@ -6,19 +6,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-x86_64:
-    name: Build on Linux (x86_64)
+  build:
+    name: Build on Linux (x86_64 & ARMv8)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v3
-      - name: Install cross and deps
-        run: |
-          sudo apt-get update && sudo apt-get install -y libssl-dev libudev-dev
-          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
       - name: Build
-        run: cross build --release --target x86_64-unknown-linux-gnu
+        run: cargo build --release --target ${{ matrix.target }}
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: x86_64-unknown-linux-gnu-release
-          path: target/x86_64-unknown-linux-gnu/release/
+          name: ${{ matrix.target }}-release
+          path: target/${{ matrix.target }}/release/ 
