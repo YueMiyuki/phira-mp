@@ -7,7 +7,6 @@ use phira_mp_common::{
     ClientCommand, JoinRoomResponse, Message, ServerCommand, Stream, UserInfo,
     HEARTBEAT_DISCONNECT_TIMEOUT,
 };
-use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashSet},
     ops::DerefMut,
@@ -25,6 +24,7 @@ use tokio::{
 };
 use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use uuid::Uuid;
+use reqwest::Client;
 
 const HOST: &str = "https://phira.5wyxi.com";
 
@@ -186,34 +186,31 @@ impl Session {
                                             bail!("invalid token");
                                         }
                                         debug!("session {id}: authenticate {token}");
-                                        #[derive(Debug, Deserialize)]
-                                        struct UserInfo {
-                                            id: i32,
-                                            name: String,
-                                            language: String,
-                                        }
-                                        let resp: Result<UserInfo> = async {
-                                            Ok(reqwest::Client::new()
-                                                .get(format!("{HOST}/me"))
-                                                .header(
-                                                    reqwest::header::AUTHORIZATION,
-                                                    format!("Bearer {token}"),
-                                                )
-                                                .send()
-                                                .await?
-                                                .error_for_status()?
-                                                .json()
-                                                .await?)
-                                        }
-                                        .await;
-                                        let resp = match resp {
-                                            Ok(resp) => resp,
-                                            Err(err) => {
-                                                warn!("failed to fetch info: {err:?}");
-                                                bail!("failed to fetch info");
-                                            }
+                                        let client = Client::new();
+                                        let resp: ApiUserInfo = fetch_with_retry(
+                                            || {
+                                                let client = &client;
+                                                let token = token.clone();
+                                                async move {
+                                                    Ok(client
+                                                        .get(format!("{HOST}/me"))
+                                                        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+                                                        .send()
+                                                        .await?
+                                                        .error_for_status()?
+                                                        .json()
+                                                        .await?)
+                                                }
+                                            },
+                                            3,
+                                        )
+                                        .await.map_err(anyhow::Error::from)?;
+                                        let user_info = UserInfo {
+                                            id: resp.id,
+                                            name: resp.name.clone(),
+                                            monitor: false, // will be set later
                                         };
-                                        debug!("session {id} <- {resp:?}");
+                                        debug!("session {id} <- {user_info:?}");
                                         let mut users_guard = server.users.write().await;
                                         if let Some(user) = users_guard.get(&resp.id) {
                                             info!("reconnect");
@@ -341,6 +338,26 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.monitor_task_handle.abort();
+    }
+}
+
+async fn fetch_with_retry<F, Fut, T>(mut f: F, max_retries: usize) -> Result<T, reqwest::Error>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, reqwest::Error>>,
+{
+    let mut attempt = 0;
+    loop {
+        match f().await {
+            Ok(val) => return Ok(val),
+            Err(e) if attempt < max_retries => {
+                let backoff = Duration::from_millis(100 * (1 << attempt).min(5000));
+                tracing::warn!("HTTP request failed (attempt {}): {}. Retrying in {:?}...", attempt + 1, e, backoff);
+                time::sleep(backoff).await;
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
@@ -577,11 +594,23 @@ async fn process(user: Arc<User>, cmd: ClientCommand) -> Option<ServerCommand> {
                 );
                 async move {
                     trace!("fetch");
-                    let res: Chart = reqwest::get(format!("{HOST}/chart/{id}"))
-                        .await?
-                        .error_for_status()?
-                        .json()
-                        .await?;
+                    let client = Client::new();
+                    let res: Chart = fetch_with_retry(
+                        || {
+                            let client = &client;
+                            async move {
+                                Ok(client
+                                    .get(format!("{HOST}/chart/{id}"))
+                                    .send()
+                                    .await?
+                                    .error_for_status()?
+                                    .json()
+                                    .await?)
+                            }
+                        },
+                        3,
+                    )
+                    .await.map_err(anyhow::Error::from)?;
                     debug!("chart is {res:?}");
                     room.send(Message::SelectChart {
                         user: user.id,
@@ -662,11 +691,23 @@ async fn process(user: Arc<User>, cmd: ClientCommand) -> Option<ServerCommand> {
         ClientCommand::Played { id } => {
             let res: Result<()> = async move {
                 get_room!(room);
-                let res: Record = reqwest::get(format!("{HOST}/record/{id}"))
-                    .await?
-                    .error_for_status()?
-                    .json()
-                    .await?;
+                let client = Client::new();
+                let res: Record = fetch_with_retry(
+                    || {
+                        let client = &client;
+                        async move {
+                            Ok(client
+                                .get(format!("{HOST}/record/{id}"))
+                                .send()
+                                .await?
+                                .error_for_status()?
+                                .json()
+                                .await?)
+                        }
+                    },
+                    3,
+                )
+                .await.map_err(anyhow::Error::from)?;
                 if res.player != user.id {
                     bail!("invalid record");
                 }
@@ -719,4 +760,11 @@ async fn process(user: Arc<User>, cmd: ClientCommand) -> Option<ServerCommand> {
             Some(ServerCommand::Abort(err_to_str(res)))
         }
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ApiUserInfo {
+    id: i32,
+    name: String,
+    language: String,
 }

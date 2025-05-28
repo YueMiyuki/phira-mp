@@ -92,6 +92,8 @@ netstat -tuln | grep 12345
 ## Patch by Miyuki
 
 - 恢复了从 `server_config.yml` 加载 `ServerConfig` 的正确逻辑，若文件缺失或无效会使用默认配置。
-- 移除了服务端代码中重复和冲突的结构体及实现。
-- 监视用户ID现可通过 `server_config.yml` 配置。
-- 确保代码可正常构建并保持最新。
+- 移除了服务端代码中重复和冲突的结构和实现。
+- Minitor用户ID现可通过 `server_config.yml` 配置。
+- 所有到 host 的 HTTP 请求增加了重试逻辑，提升了主机临时崩溃时的可靠性。
+- 改进了 API 响应的错误处理。
+- 可以构建了 <3

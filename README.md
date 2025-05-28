@@ -97,5 +97,7 @@ View: [https://docs.qq.com/doc/DU1dlekx3U096REdD](https://docs.qq.com/doc/DU1dle
 - Restored correct logic for loading `ServerConfig` from `server_config.yml` with robust fallback to defaults if the file is missing or invalid.
 - Removed duplicate and conflicting struct and implementation blocks in the server code.
 - Made monitor user IDs configurable via `server_config.yml`.
+- Added retry logic with exponential backoff for all HTTP requests to the host, improving reliability when the host is temporarily unreachable.
+- Improved error handling and type conversions for API responses.
 - You can build on latest commit now <3
 
